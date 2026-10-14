@@ -56,8 +56,13 @@ services:
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
 
-      # Kein globaler HTTPS-Redirect:
-      # Deine bestehenden HTTP-Endpunkte bleiben damit möglich.
+      # Standardmäßig HTTP auf HTTPS umleiten.
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.web.http.redirections.entrypoint.permanent=true"
+
+      # Niedrige Priorität, damit explizite HTTP-Ausnahmen gewinnen.
+      - "--entrypoints.web.http.redirections.entrypoint.priority=10"
 
       # Automatische Zertifikate
       - "--certificatesresolvers.le.acme.email=${LETSENCRYPT_EMAIL:?LETSENCRYPT_EMAIL fehlt}"
