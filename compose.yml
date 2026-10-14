@@ -92,7 +92,13 @@ services:
       - docker-api
 
     healthcheck:
-      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      test:
+        - CMD
+        - traefik
+        - healthcheck
+        - --ping
+        - --ping.entrypoint=health
+        - --entrypoints.health.address=:8082
       interval: 30s
       timeout: 5s
       retries: 3
