@@ -1,4 +1,4 @@
-iiname: edge
+name: edge
 
 x-logging: &default-logging
   driver: json-file
