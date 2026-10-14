@@ -1,0 +1,161 @@
+iiname: edge
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
+services:
+  # Beschränkter Docker-API-Zugriff für Traefik.
+  # Kein veröffentlichter Port und kein Zugang aus dem edge-Netz.
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    restart: unless-stopped
+
+    environment:
+      LOG_LEVEL: warning
+
+      CONTAINERS: "1"
+      NETWORKS: "1"
+      EVENTS: "1"
+      PING: "1"
+      VERSION: "1"
+
+      # Nur GET/HEAD erlauben.
+      POST: "0"
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+    networks:
+      - docker-api
+
+    labels:
+      traefik.enable: "false"
+      com.centurylinklabs.watchtower.enable: "false"
+
+    logging: *default-logging
+
+  traefik:
+    image: traefik:v3.7.14
+    restart: unless-stopped
+
+    depends_on:
+      - socket-proxy
+
+    command:
+      # Docker-Service-Discovery
+      - "--providers.docker=true"
+      - "--providers.docker.endpoint=tcp://socket-proxy:2375"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=edge"
+      - "--providers.docker.watch=true"
+
+      # Öffentliche Eingänge
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+
+      # Kein globaler HTTPS-Redirect:
+      # Deine bestehenden HTTP-Endpunkte bleiben damit möglich.
+
+      # Automatische Zertifikate
+      - "--certificatesresolvers.le.acme.email=${LETSENCRYPT_EMAIL:?LETSENCRYPT_EMAIL fehlt}"
+      - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.le.acme.httpchallenge=true"
+      - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
+
+      # Healthcheck, nur innerhalb des Containers erreichbar
+      - "--entrypoints.health.address=:8082"
+      - "--ping=true"
+      - "--ping.entrypoint=health"
+
+      # Logging
+      - "--log.level=${TRAEFIK_LOG_LEVEL:-INFO}"
+      - "--accesslog=true"
+      - "--accesslog.format=json"
+
+    ports:
+      - "80:80"
+      - "443:443"
+
+    volumes:
+      - certificates:/letsencrypt
+
+    networks:
+      - edge
+      - docker-api
+
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    labels:
+      traefik.enable: "false"
+      com.centurylinklabs.watchtower.enable: "false"
+
+    security_opt:
+      - no-new-privileges:true
+
+    logging: *default-logging
+
+  # Optional: Start mit --profile updates.
+  # Verwaltet freigegebene Container auf dem gesamten Docker-Host.
+  watchtower:
+    image: nickfedor/watchtower:1.23.1
+    restart: unless-stopped
+
+    profiles:
+      - updates
+
+    environment:
+      TZ: Europe/Berlin
+
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_POLL_INTERVAL: "${WATCHTOWER_POLL_INTERVAL:-300}"
+      WATCHTOWER_CLEANUP: "true"
+
+      WATCHTOWER_NOTIFICATION_URL: "${WATCHTOWER_NOTIFICATION_URL:-}"
+
+    volumes:
+      # Watchtower muss Container ersetzen können und benötigt
+      # deshalb direkten, schreibfähigen Docker-API-Zugriff.
+      - /var/run/docker.sock:/var/run/docker.sock
+
+      # Registry-Zugang für deine privaten Images.
+      - type: bind
+        source: ${DOCKER_AUTH_CONFIG:-/root/.docker/config.json}
+        target: /config.json
+        read_only: true
+        bind:
+          create_host_path: false
+
+    networks:
+      - updater
+
+    labels:
+      traefik.enable: "false"
+      com.centurylinklabs.watchtower.enable: "false"
+
+    logging: *default-logging
+
+volumes:
+  certificates:
+    name: edge-certificates
+
+networks:
+  # Gemeinsam mit den Anwendungs-Stacks.
+  edge:
+    external: true
+    name: edge
+
+  # Nur Traefik und Socket-Proxy.
+  docker-api:
+    internal: true
+
+  # Ausgehender Zugriff für Watchtower auf Registries und Benachrichtigungen.
+  updater:
+    driver: bridge
