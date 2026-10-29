@@ -24,6 +24,8 @@ Der Stack veröffentlicht TCP-Port 80 und 443. Anwendungen und ihre Routing-Rege
 
 Der Anfrageweg lautet: Client → Port 80/443 → Traefik → Anwendungscontainer im Netzwerk `edge`.
 
+Traefik hat den festen Containernamen `edge-traefik`. Anwendungen, die die Client-Adresse aus `X-Forwarded-For` lesen, sollten nur diesem Absender vertrauen: Hostname `edge-traefik` (per Docker-DNS im Netzwerk `edge` auflösbar) statt einer IP-Adresse, die sich bei jedem Neustart ändern kann, und nicht das ganze Netzwerk `edge` – jeder Container darin könnte den Header sonst fälschen. Der Dienstname `traefik` ist dafür nicht geeignet, weil ihn jeder Stack im Netzwerk `edge` ebenfalls tragen kann. Der feste Name verhindert mehrere Traefik-Instanzen desselben Stacks auf einem Host.
+
 Traefik greift über `socket-proxy:2375` auf die Docker-API zu. Der Socket-Proxy hat keinen veröffentlichten Host-Port und hängt nicht im Anwendungsnetz. `POST=0` beschränkt ihn auf GET/HEAD. Container-Metadaten können trotzdem sensible Informationen enthalten; dies ist keine vollständige Geheimnis-Isolation.
 
 Watchtower benötigt zum Ersetzen von Containern Schreibzugriff und erhält deshalb den Docker-Socket direkt. Ein Socket-Mount mit `:ro` allein würde API-Schreiboperationen nicht verhindern.
