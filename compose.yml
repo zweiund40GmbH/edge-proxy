@@ -41,6 +41,11 @@ services:
     image: traefik:v3.7.14
     restart: unless-stopped
 
+    # Fester, eindeutiger Name: Anwendungen im Netz edge erreichen Traefik darüber per Docker-DNS,
+    # z. B. um nur Traefik als vertrauenswürdigen Proxy für X-Forwarded-For einzutragen.
+    # Der Dienstname traefik wäre nicht eindeutig (jeder Stack im Netz edge kann ihn tragen).
+    container_name: edge-traefik
+
     depends_on:
       - socket-proxy
 
